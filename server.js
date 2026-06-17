@@ -244,7 +244,7 @@ function getCurrentMondayDate() {
 }
 
 function checkAndClearAvailability() {
-  const now = new Date();
+  const now = new Date(new Date().toLocaleString('en-AU', { timeZone: 'Australia/Perth' }));
   // Clear at 1am Sunday (day 0)
   if (now.getDay() === 0 && now.getHours() >= 1) {
     const thisWeek = getCurrentMondayDate();
