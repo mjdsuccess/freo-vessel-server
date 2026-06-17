@@ -233,12 +233,12 @@ app.get('/health', (req, res) => {
 let availabilityData = {};
 let availabilityWeekStart = null;
 
-function getNextMondayDate() {
+function getCurrentMondayDate() {
   const now = new Date();
   const day = now.getDay();
-  const daysToMon = day === 0 ? 1 : (8 - day) % 7 || 7;
+  const daysToMon = day === 0 ? 6 : day - 1;
   const mon = new Date(now);
-  mon.setDate(now.getDate() + daysToMon);
+  mon.setDate(now.getDate() - daysToMon);
   mon.setHours(0, 0, 0, 0);
   return mon.toISOString().split('T')[0];
 }
@@ -247,7 +247,7 @@ function checkAndClearAvailability() {
   const now = new Date();
   // Clear at 1am Sunday (day 0)
   if (now.getDay() === 0 && now.getHours() >= 1) {
-    const thisWeek = getNextMondayDate();
+    const thisWeek = getCurrentMondayDate();
     if (availabilityWeekStart !== thisWeek) {
       console.log('Auto-clearing availability for new week');
       console.log(`Auto-clearing availability for new week at ${new Date().toLocaleString('en-AU')}`);
@@ -263,7 +263,7 @@ function checkAndClearAvailability() {
 app.get('/availability', (req, res) => {
   checkAndClearAvailability();
   res.json({
-    weekStart: getNextMondayDate(),
+    weekStart: getCurrentMondayDate(),
     volunteers: availabilityData
   });
 });
@@ -278,7 +278,7 @@ app.post('/availability', (req, res) => {
   }
   availabilityData[name] = availability;
   console.log(`Availability saved for: ${name}`);
-  res.json({ success: true, name, weekStart: getNextMondayDate() });
+  res.json({ success: true, name, weekStart: getCurrentMondayDate() });
 });
 
 // DELETE /availability/:name - remove a volunteer entry
