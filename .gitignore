@@ -1,1 +1,4 @@
 node_modules/
+package*.bak
+freo.db*
+server.js.bak

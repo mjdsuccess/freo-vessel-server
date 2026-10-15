@@ -5,6 +5,8 @@ const https = require('https');
 
 const app = express();
 app.use(cors());
+app.use(express.json());
+app.use(require('./auth'));
 const PORT = process.env.PORT || 3000;
 
 const BASE_URL = 'https://www3.fremantleports.com.au/vtmis';
@@ -193,31 +195,102 @@ app.get('/stats', (req, res) => {
     `<tr><td>${e.visitor}</td><td>${e.time}</td></tr>`
   ).join('');
 
+  const availRows = Object.keys(availabilityData).length === 0
+    ? '<tr><td colspan="2">No entries this week</td></tr>'
+    : Object.entries(availabilityData).map(([name, avail]) => {
+        const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+        const summary = days.map((d, i) => {
+          const am = avail[i * 2];
+          const pm = avail[i * 2 + 1];
+          if (am && pm) return `${d}:ALL`;
+          if (am) return `${d}:AM`;
+          if (pm) return `${d}:PM`;
+          return null;
+        }).filter(Boolean).join(', ');
+        return `<tr><td>${name}</td><td>${summary || 'No days selected'}</td></tr>`;
+      }).join('');
+
+  const uptime = process.uptime();
+  const uptimeStr = (() => {
+    const h = Math.floor(uptime / 3600);
+    const m = Math.floor((uptime % 3600) / 60);
+    const s = Math.floor(uptime % 60);
+    return `${h}h ${m}m ${s}s`;
+  })();
+
+  const serverTime = new Date().toLocaleString('en-AU', { timeZone: 'Australia/Perth' });
+
   res.send(`
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Freo Port — Visitor Stats</title>
+      <title>Freo Port — Server Dashboard</title>
+      <meta http-equiv="refresh" content="60">
       <style>
-        body { font-family: Arial, sans-serif; background: #003B6F; color: white; padding: 30px; }
-        h1 { color: #E87722; }
-        p { color: #B0C4DE; margin-bottom: 20px; }
-        table { border-collapse: collapse; width: 100%; max-width: 600px; background: white; color: #333; border-radius: 8px; overflow: hidden; }
-        th { background: #003B6F; color: white; padding: 10px 16px; text-align: left; }
-        td { padding: 8px 16px; border-bottom: 1px solid #eee; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; background: #003B6F; color: white; padding: 24px; }
+        h1 { color: #E87722; font-size: 24px; margin-bottom: 4px; }
+        .subtitle { color: #B0C4DE; font-size: 13px; margin-bottom: 24px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+        .card { background: #002D56; border-radius: 8px; padding: 16px; }
+        .card h2 { font-size: 13px; color: #B0C4DE; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+        .stat { font-size: 28px; font-weight: bold; color: #E87722; }
+        .stat-label { font-size: 12px; color: #6B8CAE; margin-top: 2px; }
+        table { border-collapse: collapse; width: 100%; background: white; color: #333; border-radius: 8px; overflow: hidden; }
+        th { background: #003B6F; color: white; padding: 10px 16px; text-align: left; font-size: 13px; }
+        td { padding: 8px 16px; border-bottom: 1px solid #eee; font-size: 13px; }
         tr:last-child td { border-bottom: none; }
         tr:nth-child(even) td { background: #F5F7FA; }
-        .count { font-size: 14px; color: #B0C4DE; margin-top: 16px; }
+        .section { margin-bottom: 24px; }
+        .section h2 { font-size: 15px; color: #E87722; margin-bottom: 10px; }
+        .refresh { font-size: 11px; color: #6B8CAE; margin-top: 16px; text-align: right; }
+        .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #00CC66; margin-right: 6px; }
       </style>
     </head>
     <body>
-      <h1>Freo Port — Visitor Log</h1>
-      <p>Unique visitors: <b>${visitorCount}</b> &nbsp;|&nbsp; Total visits: <b>${visitLog.length}</b></p>
-      <table>
-        <tr><th>Visitor</th><th>Date &amp; Time</th></tr>
-        ${rows || '<tr><td colspan="2">No visits recorded yet</td></tr>'}
-      </table>
-      <p class="count">Log clears when server restarts.</p>
+      <h1>Freo Port — Server Dashboard</h1>
+      <p class="subtitle"><span class="status-dot"></span>Server is running &nbsp;|&nbsp; ${serverTime} &nbsp;|&nbsp; Uptime: ${uptimeStr}</p>
+
+      <div class="grid">
+        <div class="card">
+          <h2>Unique Visitors</h2>
+          <div class="stat">${visitorCount}</div>
+          <div class="stat-label">since server started</div>
+        </div>
+        <div class="card">
+          <h2>Total Visits</h2>
+          <div class="stat">${visitLog.length}</div>
+          <div class="stat-label">vessel data fetches</div>
+        </div>
+        <div class="card">
+          <h2>Availability Entries</h2>
+          <div class="stat">${Object.keys(availabilityData).length}</div>
+          <div class="stat-label">volunteers this week</div>
+        </div>
+        <div class="card">
+          <h2>Week Starting</h2>
+          <div class="stat" style="font-size:20px;margin-top:4px">${getCurrentMondayDate()}</div>
+          <div class="stat-label">current week</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Volunteer Availability</h2>
+        <table>
+          <tr><th>Name</th><th>Availability</th></tr>
+          ${availRows}
+        </table>
+      </div>
+
+      <div class="section">
+        <h2>Visitor Log</h2>
+        <table>
+          <tr><th>Visitor</th><th>Date &amp; Time</th></tr>
+          ${rows || '<tr><td colspan="2">No visits recorded yet</td></tr>'}
+        </table>
+      </div>
+
+      <p class="refresh">Page auto-refreshes every 60 seconds</p>
     </body>
     </html>
   `);
@@ -244,7 +317,7 @@ function getCurrentMondayDate() {
 }
 
 function checkAndClearAvailability() {
-  const now = new Date(new Date().toLocaleString('en-AU', { timeZone: 'Australia/Perth' }));
+  const now = new Date();
   // Clear at 1am Sunday (day 0)
   if (now.getDay() === 0 && now.getHours() >= 1) {
     const thisWeek = getCurrentMondayDate();
