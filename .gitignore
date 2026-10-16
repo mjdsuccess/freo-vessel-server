@@ -3,3 +3,4 @@ package*.bak
 freo.db*
 server.js.bak
 auth.js.bak
+*.bak

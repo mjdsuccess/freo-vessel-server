@@ -14,6 +14,7 @@ db.exec(`
     password_hash TEXT NOT NULL,
     salt          TEXT NOT NULL,
     status        TEXT NOT NULL DEFAULT 'pending',   -- pending | approved | revoked
+    is_admin      INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -44,5 +45,11 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_ships_name  ON ships(name);
   CREATE INDEX IF NOT EXISTS idx_visits_ship ON visits(ship_id);
 `);
+
+// Upgrade a database created before admin accounts existed
+const userColumns = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+if (!userColumns.includes('is_admin')) {
+  db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');
+}
 
 module.exports = db;
