@@ -7,6 +7,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(require('./auth'));
+app.use(require('./ships'));
+
 const PORT = process.env.PORT || 3000;
 
 const BASE_URL = 'https://www3.fremantleports.com.au/vtmis';

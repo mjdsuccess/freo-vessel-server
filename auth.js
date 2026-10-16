@@ -28,16 +28,27 @@ function clientIp(req) {
   return (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
 }
 
-// Simple brute-force guard: 10 failed logins per IP per 15 minutes
+// Brute-force guards on failed logins, over a 15 minute window:
+//  - per IP address: 10 failures (the forwarded address can be faked, so not enough alone)
+//  - per volunteer name: 8 failures (can't be dodged by changing address)
+const WINDOW_MS = 15 * 60 * 1000;
 const failures = {};
-function tooManyFailures(ip) {
+function tooManyFailures(key, limit) {
   const now = Date.now();
-  failures[ip] = (failures[ip] || []).filter(t => now - t < 15 * 60 * 1000);
-  return failures[ip].length >= 10;
+  failures[key] = (failures[key] || []).filter(t => now - t < WINDOW_MS);
+  return failures[key].length >= limit;
 }
-function recordFailure(ip) {
-  (failures[ip] = failures[ip] || []).push(Date.now());
+function recordFailure(key) {
+  (failures[key] = failures[key] || []).push(Date.now());
 }
+// Tidy out old entries once an hour so memory doesn't grow
+setInterval(() => {
+  const now = Date.now();
+  for (const k of Object.keys(failures)) {
+    failures[k] = failures[k].filter(t => now - t < WINDOW_MS);
+    if (!failures[k].length) delete failures[k];
+  }
+}, 60 * 60 * 1000).unref();
 
 // ---------- middleware (exported for step 2 routes) ----------
 
@@ -98,16 +109,18 @@ router.post('/auth/register', (req, res) => {
 
 // Login: returns a token once approved
 router.post('/auth/login', (req, res) => {
-  const ip = clientIp(req);
-  if (tooManyFailures(ip)) {
-    return res.status(429).json({ error: 'Too many attempts. Try again later.' });
-  }
+  const ipKey = 'ip:' + clientIp(req);
   const name = String(req.body.name || '').trim();
   const password = String(req.body.password || '');
+  const nameKey = 'name:' + name.toLowerCase();
+  if (tooManyFailures(ipKey, 10) || tooManyFailures(nameKey, 8)) {
+    return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
+  }
   const user = db.prepare('SELECT * FROM users WHERE name = ?').get(name);
 
   if (!user || !safeEqual(hashPassword(password, user.salt), user.password_hash)) {
-    recordFailure(ip);
+    recordFailure(ipKey);
+    recordFailure(nameKey);
     return res.status(401).json({ error: 'Incorrect name or password' });
   }
   if (user.status === 'pending') {
